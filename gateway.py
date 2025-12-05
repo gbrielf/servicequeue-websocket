@@ -1,15 +1,14 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-import httpx  # Cliente HTTP para falar com as outras APIs
+import httpx 
 from typing import List
 
 app = FastAPI(title="Gateway de Atendimento")
 
-# Configuração de CORS (Para o HTML funcionar sem bloqueio)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Permite qualquer origem
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,16 +35,19 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+@app.get("/")
+async def serve_html():
+    return FileResponse("index.html")
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text() # Mantém conexão viva
+            await websocket.receive_text()  # Mantém conexão viva
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-
-# --- Rotas com HATEOAS ---
 
 
 @app.get("/painel")
@@ -73,7 +75,7 @@ async def get_painel_info(perfil: str = Query("cliente"), minha_senha: str = Que
                 "rel": "chamar_proximo",
                 "method": "POST",
                 "href": "http://localhost:8000/admin/chamar",
-                "title": "ADMIN: Chamar Próxima Senha"
+                "title": "Chamar Próxima Senha"
             })
     else:
         if not minha_senha:
@@ -99,10 +101,8 @@ async def get_painel_info(perfil: str = Query("cliente"), minha_senha: str = Que
 async def cliente_pegar_senha():
     # O Gateway recebe o pedido do cliente e repassa para o Service Ticket
     async with httpx.AsyncClient() as client:
-        # Chama a API interna na porta 8001
         resp = await client.post("http://localhost:8001/entrar")
         
-        # Se der erro lá dentro, evita quebrar o gateway
         if resp.status_code != 200:
             return {"erro": "Falha ao gerar senha no serviço interno"}
             
@@ -111,7 +111,6 @@ async def cliente_pegar_senha():
     # Avisa todo mundo (WebSocket) que a fila mudou
     await manager.broadcast("FILA_ATUALIZADA")
     
-    # Retorna os dados com HATEOAS
     return {
         "senha": dados["senha"],
         "posicao": dados["posicao"],
@@ -138,7 +137,6 @@ async def chamar_senha():
         result = resp.json()
         nova_senha = result["senha"]
 
-    # Dispara o WebSocket para todos os clientes com as duas mensagens
     await manager.broadcast(f"SENHA_ATUAL:{nova_senha}")
     await manager.broadcast("FILA_ATUALIZADA")
     
@@ -156,6 +154,3 @@ async def chamar_senha():
     }
 
 
-@app.get("/")
-async def serve_html():
-    return FileResponse("index.html")

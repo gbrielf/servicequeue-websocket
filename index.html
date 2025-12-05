@@ -71,13 +71,11 @@
                 document.getElementById("visor").innerText = senhaChamada;
             }
 
-            // Se receber "FILA_ATUALIZADA" ou qualquer outra coisa, recarrega os dados
             if (event.data === "FILA_ATUALIZADA") {
                 carregarDadosHateoas();
             }
         };
 
-        // --- Lógica Principal ---
         async function carregarDadosHateoas() {
             const divBotoes = document.getElementById("botoes-acao");
 
@@ -108,8 +106,6 @@
                         btn.onclick = () => realizarAcao(link.href, link.method, link.rel);
                         divBotoes.appendChild(btn);
                     } else if (link.rel === "aguardar") {
-                        divBotoes.innerHTML += `<p class="text-orange-500 font-bold">${link.title}</p>`;
-
                         // Adicionar botão para pegar nova senha (útil para testes) - apenas para clientes
                         if (perfilAtual !== 'admin') {
                             const btnNova = document.createElement("button");
