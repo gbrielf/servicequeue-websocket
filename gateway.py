@@ -3,8 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import httpx 
 from typing import List
+from udp_client import UDPMetricsClient
 
 app = FastAPI(title="Gateway de Atendimento")
+
+# Cliente UDP para envio de métricas
+metrics_client = UDPMetricsClient()
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,9 +27,21 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        # Enviar métrica de conexão
+        metrics_client.send_metric(
+            event='websocket_conectado',
+            data={'total_conexoes': len(self.active_connections)},
+            source='gateway'
+        )
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
+        # Enviar métrica de desconexão
+        metrics_client.send_metric(
+            event='websocket_desconectado',
+            data={'total_conexoes': len(self.active_connections)},
+            source='gateway'
+        )
 
     async def broadcast(self, message: str):
         for connection in self.active_connections:

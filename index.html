@@ -46,8 +46,10 @@
     </div>
 
     <script>
-        const API_URL = "http://127.0.0.1:8000";
-        const WS_URL = "ws://127.0.0.1:8000/ws";
+        // Detecta automaticamente o IP do servidor
+        const HOST = window.location.hostname || "127.0.0.1";
+        const API_URL = `http://${HOST}:8000`;
+        const WS_URL = `ws://${HOST}:8000/ws`;
 
         const params = new URLSearchParams(window.location.search);
         const perfilAtual = params.get("perfil") || "cliente";
