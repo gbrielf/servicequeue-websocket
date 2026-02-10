@@ -55,7 +55,7 @@ class UDPMetricsServer:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((self.host, self.port))
         self.running = False
-        
+    
     def start(self):
         self.running = True
         print(f"🚀 Servidor UDP de Métricas iniciado em {self.host}:{self.port}")

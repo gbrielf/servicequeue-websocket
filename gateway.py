@@ -68,105 +68,120 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/painel")
 async def get_painel_info(perfil: str = Query("cliente"), minha_senha: str = Query(None)):  # Padrão é "cliente"
-    async with httpx.AsyncClient() as client:
-        r_ticket = await client.get("http://localhost:8001/fila")
-        ticket_data = r_ticket.json()
-        
-        pessoas_na_frente = ticket_data["tamanho"]
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r_ticket = await client.get("http://localhost:8001/fila")
+            ticket_data = r_ticket.json()
 
-        if minha_senha and minha_senha in ticket_data["lista_completa"]:
-            pessoas_na_frente = ticket_data["lista_completa"].index(minha_senha)
+            pessoas_na_frente = ticket_data["tamanho"]
 
-        r_stats = await client.get(f"http://localhost:8002/estatisticas?pessoas_na_frente={pessoas_na_frente}")
-        stats_data = r_stats.json()
+            if minha_senha and minha_senha in ticket_data["lista_completa"]:
+                pessoas_na_frente = ticket_data["lista_completa"].index(minha_senha)
 
+            r_stats = await client.get(f"http://localhost:8002/estatisticas?pessoas_na_frente={pessoas_na_frente}")
+            stats_data = r_stats.json()
 
-    links = [
-        {"rel": "self", "method": "GET", "href": "http://localhost:8000/painel"},
-    ]
+        links = [
+            {"rel": "self", "method": "GET", "href": "http://localhost:8000/painel"},
+        ]
 
-    if perfil == "admin":
-        if ticket_data["tamanho"] > 0:
-            links.append({
-                "rel": "chamar_proximo",
-                "method": "POST",
-                "href": "http://localhost:8000/admin/chamar",
-                "title": "Chamar Próxima Senha"
-            })
-    else:
-        if not minha_senha:
-            links.append({
-                "rel": "pegar_senha",
-                "method": "POST",
-                "href": "http://localhost:8000/cliente/entrar", 
-                "title": "Retirar senha",
-            })
+        if perfil == "admin":
+            if ticket_data["tamanho"] > 0:
+                links.append({
+                    "rel": "chamar_proximo",
+                    "method": "POST",
+                    "href": "http://localhost:8000/admin/chamar",
+                    "title": "Chamar Próxima Senha"
+                })
         else:
-            links.append({"rel": "aguardar", "title": f"Sua senha: {minha_senha}"})
-    return {
-        "dados": {
-            "fila": ticket_data,
-            "performance": stats_data,
-            "minha_posicao_real": pessoas_na_frente
-        },
-        "_links": links
+            if not minha_senha:
+                links.append({
+                    "rel": "pegar_senha",
+                    "method": "POST",
+                    "href": "http://localhost:8000/cliente/entrar",
+                    "title": "Retirar senha",
+                })
+            else:
+                links.append({"rel": "aguardar", "title": f"Sua senha: {minha_senha}"})
+
+        return {
+            "dados": {
+                "fila": ticket_data,
+                "performance": stats_data,
+                "minha_posicao_real": pessoas_na_frente
+            },
+            "_links": links
         }
+    except httpx.RequestError as e:
+        return {"erro": f"Erro ao conectar com os serviços: {str(e)}"}
+    except KeyError as e:
+        return {"erro": f"Erro ao processar dados: {str(e)}"}
 
 
 @app.post("/cliente/entrar")
 async def cliente_pegar_senha():
     # O Gateway recebe o pedido do cliente e repassa para o Service Ticket
-    async with httpx.AsyncClient() as client:
-        resp = await client.post("http://localhost:8001/entrar")
-        
-        if resp.status_code != 200:
-            return {"erro": "Falha ao gerar senha no serviço interno"}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post("http://localhost:8001/entrar")
             
-        dados = resp.json()
-    
-    # Avisa todo mundo (WebSocket) que a fila mudou
-    await manager.broadcast("FILA_ATUALIZADA")
-    
-    return {
-        "senha": dados["senha"],
-        "posicao": dados["posicao"],
-        "_links": [
-            {
-                "rel": "self",
-                "method": "GET",
-                "href": f"http://localhost:8000/painel?minha_senha={dados['senha']}",
-                "title": "Ver sua posição na fila"
-            }
-        ]
-    }
+            if resp.status_code != 200:
+                return {"erro": "Falha ao gerar senha no serviço interno"}
+                
+            dados = resp.json()
+        
+        # Avisa todo mundo (WebSocket) que a fila mudou
+        await manager.broadcast("FILA_ATUALIZADA")
+        
+        return {
+            "senha": dados["senha"],
+            "posicao": dados["posicao"],
+            "_links": [
+                {
+                    "rel": "self",
+                    "method": "GET",
+                    "href": f"http://localhost:8000/painel?minha_senha={dados['senha']}",
+                    "title": "Ver sua posição na fila"
+                }
+            ]
+        }
+    except httpx.RequestError as e:
+        return {"erro": f"Erro ao conectar com service_ticket: {str(e)}"}
+    except Exception as e:
+        return {"erro": f"Erro inesperado: {str(e)}"}
 
 
 @app.post("/admin/chamar")
 async def chamar_senha():
     # Chama a API de Ticket
-    async with httpx.AsyncClient() as client:
-        resp = await client.post("http://localhost:8001/chamar")
-        
-        if resp.status_code != 200:
-            return {"erro": "Falha ao chamar próxima senha"}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post("http://localhost:8001/chamar")
             
-        result = resp.json()
-        nova_senha = result["senha"]
+            if resp.status_code != 200:
+                return {"erro": "Falha ao chamar próxima senha"}
+                
+            result = resp.json()
+            nova_senha = result["senha"]
 
-    await manager.broadcast(f"SENHA_ATUAL:{nova_senha}")
-    await manager.broadcast("FILA_ATUALIZADA")
-    
-    return {
-        "status": "sucesso",
-        "senha_chamada": nova_senha,
-        "_links": [
-            {
-                "rel": "painel",
-                "method": "GET",
-                "href": "http://localhost:8000/painel?perfil=admin",
-                "title": "Voltar ao painel admin"
-            }
-        ]
-    }
+        await manager.broadcast(f"SENHA_ATUAL:{nova_senha}")
+        await manager.broadcast("FILA_ATUALIZADA")
+        
+        return {
+            "status": "sucesso",
+            "senha_chamada": nova_senha,
+            "_links": [
+                {
+                    "rel": "painel",
+                    "method": "GET",
+                    "href": "http://localhost:8000/painel?perfil=admin",
+                    "title": "Voltar ao painel admin"
+                }
+            ]
+        }
+    except httpx.RequestError as e:
+        return {"erro": f"Erro ao conectar com service_ticket: {str(e)}"}
+    except Exception as e:
+        return {"erro": f"Erro inesperado: {str(e)}"}
 
 

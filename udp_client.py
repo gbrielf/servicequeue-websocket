@@ -35,6 +35,6 @@ class UDPMetricsClient:
             # Falhas no envio de métricas não devem quebrar o serviço
             # Apenas log silencioso (ou pode ser removido em produção)
             pass
-    
+  
     def close(self):
         self.sock.close()
